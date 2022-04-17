@@ -1,4 +1,4 @@
-Steering controller code and PCB design for the[Dreamboat](https://github.com/OliverColeman/dreamboat) - a motorised four-poster bed designed to move in surreal and dreamlike ways.
+Steering controller code and PCB design for the [Dreamboat](https://github.com/OliverColeman/dreamboat) - a motorised four-poster bed designed to move in surreal and dreamlike ways.
 
 * Connects to the Dreamboat controller (Raspberry Pi) via USB.
 * Receives commands that specify the desired angles of the wheels.
