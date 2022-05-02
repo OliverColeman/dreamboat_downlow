@@ -35,18 +35,20 @@ class Wheel {
 
     /** Drive the steering motor. Rate range is [-1, 1]. Negative values indicate counter-clockwise. */
     void driveMotor(double rate) {
+      // Ensure change in drive speed this time step is no more than MOTOR_RAMPING_DELTA.
+      double rateDelta = capRange(-MOTOR_RAMPING_DELTA, rate - this->driveRate, MOTOR_RAMPING_DELTA);
+      double rampedRate = this->driveRate + rateDelta;
+      
       // If the motor direction is changing, turn off PWM output before performing the direction change.
       // This avoids the situation where the A and B direction input on the motor controller are both potentially 
       // enabled momentarily due to the signal propagation delay for the NOT gate driving the B input.
-      bool direction = rate > 0 ? CW : CCW;
-      bool previousDirection = this->driveRate > 0 ? CW : CCW;
-      if (previousDirection != direction) analogWrite(this->motorPwmPin, 0);
+      bool direction = rampedRate > 0 ? CW : CCW;
       digitalWrite(this->motorDirectionPin, direction);
-      analogWrite(this->motorPwmPin, abs(round(rate * 256)));
-      this->driveRate = rate;
+      analogWrite(this->motorPwmPin, abs(round(rampedRate * 256)));
+      this->driveRate = rampedRate;
     }
 
-    
+  
   public:
     Wheel(
       int wheelNumber, 
@@ -138,6 +140,9 @@ class Wheel {
     bool isReady() {
       return this->ready;
     }
+
+    /** Get the current drive rate of the steering motor, in range [-1, 1]. */
+    double getDriveRate() { return this->driveRate; }
 
     /** Get the amount of time that the wheel has been stuck, in seconds. */
     double getStuckTime() { return this->stuckTime; }
