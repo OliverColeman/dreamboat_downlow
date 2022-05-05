@@ -14,7 +14,7 @@
 
 #include "wheel.h"
 
-// Set up the quadrature encoders.
+// Set up the quadrature encoders for steering position.
 // QuadEncoder( channel [1:4], A pin, B pin )
 QuadEncoder encoders[4] = {
   QuadEncoder(1, 1, 2),
@@ -23,12 +23,12 @@ QuadEncoder encoders[4] = {
   QuadEncoder(4, 30, 31)
 };
 // Set up wheels.
-// Wheel( wheelNumber, homeSwitchPin, motorDirectionPin, motorPwmPin, encoder )
+// Wheel(wheelNumber, steeringMotorDirectionPin, steeringMotorPwmPin, steeringMotorFaultPin, homeSwitchPin, encoder )
 Wheel wheels[4] = {
-  Wheel(0, 9, 16, 18, &encoders[0]),
-  Wheel(1, 10, 17, 19, &encoders[1]),
-  Wheel(2, 11, 20, 22, &encoders[2]),
-  Wheel(3, 12, 21, 23, &encoders[3])
+  Wheel(0, 16, 18, 33, 9, &encoders[0]),
+  Wheel(1, 17, 19, 34, 10, &encoders[1]),
+  Wheel(2, 20, 22, 35, 11, &encoders[2]),
+  Wheel(3, 21, 23, 36, 12, &encoders[3])
 };
 
 // Current sensing inputs (one per motor controller)
@@ -82,10 +82,11 @@ void loop() {
     }
     // If a Get command has been received.
     else if (command == 'G') {
-      // 1 byte for wheel ready status flags, bit format [ x x x x w3 w2 w1 w0 ]
+      // 1 byte for wheel fault (of steering motor driver) and ready status flags, bit format [ w3f w2f w1f w0f w3r w2r w1r w0r ]
       byte flags = 0;
       // For each wheel.
       for (int wi = 0; wi < 4; wi++) {
+        flags |= wheels[wi].getSteeringDriverFault() << (wi+4);
         flags |= wheels[wi].isReady() << wi;
 
         // 2 bytes to represent current angle of wheel, in range [0-65535].
