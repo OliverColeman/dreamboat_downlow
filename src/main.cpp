@@ -30,10 +30,6 @@ USBSabertooth driveMC[2] = {
   USBSabertooth(driveMCSerial1, 128)
 };
 
-// TODO
-// motorController[mcIndex].setCurrentLimit('*', motorControllerMaxCurrentPerMotor)
-// motorController[mcIndex].setRamping('*', 2000)
-
 // Set up wheels.
 // Wheel(wheelNumber, driveMotorController, driveMotorControllerChannel, steeringMotorDirectionPin, steeringMotorPwmPin, steeringMotorFaultPin, homeSwitchPin, encoder )
 Wheel wheels[4] = {
@@ -48,10 +44,10 @@ const int currentPins[] = {
   24, 25, 26, 27, // DC0-3  Drive motor current sensors
   38, 39, 40, 41  // SC0-3  Steering motor current sensors
 };
-// The current currently being drawn by each motor controller.
-double motorCurrentDraw[8];
+// The current currently being drawn by each motor.
+float motorCurrentDraw[8];
 // Precalculated value to convert sensor reading to amps.
-double currentSenseConversionFactor;
+float currentSenseConversionFactor;
 // Make an ADC to read the current sensor values.
 ADC *adc = new ADC();
 
@@ -94,7 +90,7 @@ void loop() {
         // 2 bytes for angle of wheel, in range [0-65535], for [0, 360] degrees.
         Serial.readBytes((char*) readBuffer, 2);
         uint16_t shortVal = readBuffer[0] << 8 | readBuffer[1];
-        double unitAngle = shortVal / 65535.0;
+        float unitAngle = shortVal / 65535.0;
         wheels[wi].setWheelPositionTarget(normaliseValueToRange(-180, unitAngle * 360, 180));
 
         // 1 byte for drive rate, 0 = full reverse, 127 = stop, 254 = full forward.
@@ -112,7 +108,7 @@ void loop() {
         flags |= wheels[wi].isReady() << wi;
 
         // 2 bytes to represent current angle of wheel, in range [0-65535].
-        double normalisedTo360 = normaliseValueToRange(0, wheels[wi].getPosition(), 360);
+        float normalisedTo360 = normaliseValueToRange(0, wheels[wi].getPosition(), 360);
         uint16_t shortVal = round(normalisedTo360 / 360.0 * 65535);
         sendBuffer.write((shortVal >> 8) & 0xff);
         sendBuffer.write((shortVal >> 0) & 0xff);
@@ -156,7 +152,7 @@ void loop() {
     lastWheelUpdateTime = now;
 
     for (int wi = 0; wi < 4; wi++) {
-      wheels[wi].update();
+      wheels[wi].update(motorCurrentDraw[wi], motorCurrentDraw[wi+4]);
     }
 
      for (int csi = 0; csi < 8; csi++) {

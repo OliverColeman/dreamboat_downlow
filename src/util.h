@@ -1,11 +1,11 @@
-double capRange(double min, double val, double max) {
+float capRange(float min, float val, float max) {
   if (val < min) return min;
   if (val > max) return max;
   return val;
 }
 
-double normaliseValueToRange(double min, double val, double max) {
-  double range = max - min;
+float normaliseValueToRange(float min, float val, float max) {
+  float range = max - min;
   while (val > max) val -= range;
   while (val < min) val += range;
   return val;
