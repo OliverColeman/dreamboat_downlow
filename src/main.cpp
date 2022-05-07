@@ -22,13 +22,25 @@ QuadEncoder encoders[4] = {
   QuadEncoder(3, 5, 7),
   QuadEncoder(4, 30, 31)
 };
+
+USBSabertoothSerial driveMCSerial0(Serial7);
+USBSabertoothSerial driveMCSerial1(Serial3);
+USBSabertooth driveMC[2] = {
+  USBSabertooth(driveMCSerial0, 128),
+  USBSabertooth(driveMCSerial1, 128)
+};
+
+// TODO
+// motorController[mcIndex].setCurrentLimit('*', motorControllerMaxCurrentPerMotor)
+// motorController[mcIndex].setRamping('*', 2000)
+
 // Set up wheels.
-// Wheel(wheelNumber, steeringMotorDirectionPin, steeringMotorPwmPin, steeringMotorFaultPin, homeSwitchPin, encoder )
+// Wheel(wheelNumber, driveMotorController, driveMotorControllerChannel, steeringMotorDirectionPin, steeringMotorPwmPin, steeringMotorFaultPin, homeSwitchPin, encoder )
 Wheel wheels[4] = {
-  Wheel(0, 16, 18, 33, 9, &encoders[0]),
-  Wheel(1, 17, 19, 34, 10, &encoders[1]),
-  Wheel(2, 20, 22, 35, 11, &encoders[2]),
-  Wheel(3, 21, 23, 36, 12, &encoders[3])
+  Wheel(0, &driveMC[0], 1, 16, 18, 33, 9, &encoders[0]),
+  Wheel(1, &driveMC[0], 2, 17, 19, 34, 10, &encoders[1]),
+  Wheel(2, &driveMC[1], 1, 20, 22, 35, 11, &encoders[2]),
+  Wheel(3, &driveMC[1], 2, 21, 23, 36, 12, &encoders[3])
 };
 
 // Current sensing inputs (one per motor controller)
@@ -46,6 +58,8 @@ ADC *adc = new ADC();
 
 void setup() {
   Serial.begin(9600);
+  Serial7.begin(9600);
+  Serial3.begin(9600);
 
   pinMode(LED_BUILTIN, OUTPUT);
 
@@ -67,6 +81,9 @@ Buffer sendBuffer = Buffer(32);
 boolean aliveFlag = false;
 
 void loop() {
+  // TODO if no command received in some time frame then stop and lock.
+  // TODO add lock command.
+
   // If a command has been received over USB.
   if (Serial.available() > 0) {
     byte command = Serial.read();
@@ -74,10 +91,15 @@ void loop() {
     // If a Set command has been received.
     if (command == 'S') {
       for (int wi = 0; wi < 4; wi++) {
+        // 2 bytes for angle of wheel, in range [0-65535], for [0, 360] degrees.
         Serial.readBytes((char*) readBuffer, 2);
         uint16_t shortVal = readBuffer[0] << 8 | readBuffer[1];
         double unitAngle = shortVal / 65535.0;
         wheels[wi].setWheelPositionTarget(normaliseValueToRange(-180, unitAngle * 360, 180));
+
+        // 1 byte for drive rate, 0 = full reverse, 127 = stop, 254 = full forward.
+        uint8_t driveRate = Serial.read();
+        wheels[wi].setDriveRate((driveRate - 127.0) / 127.0);
       }
     }
     // If a Get command has been received.
@@ -95,11 +117,17 @@ void loop() {
         sendBuffer.write((shortVal >> 8) & 0xff);
         sendBuffer.write((shortVal >> 0) & 0xff);
 
-        // 1 byte to represent rate the steering motor is being driven at. 0=full reverse, 127=stopped, 254=full forward.
+        // 1 byte to represent rate the drive motor is being driven at. 0=full reverse, 127=stopped, 254=full forward.
         sendBuffer.write(round(wheels[wi].getDriveRate() * 127 + 127) & 0xff);
+
+        // 1 byte to represent rate the steering motor is being driven at. 0=full reverse, 127=stopped, 254=full forward.
+        sendBuffer.write(round(wheels[wi].getSteeringMotorDriveRate() * 127 + 127) & 0xff);
 
         // 1 byte to represent time wheel has been stuck, in tenths of a second. 
         sendBuffer.write(round((wheels[wi].getStuckTime() * 10)) & 0xff);
+
+        // 1 byte to represent temperature of the drive motor controller channel for the wheel, in degrees C. 
+        sendBuffer.write(round((wheels[wi].getDriveControllerTemperature())) & 0xff);
 
         // 1 byte to represent the current being drawn by the steering motor, in halves of an amp. 0 = -63.5A, 127=0A, 254=63.5A
         sendBuffer.write(round(motorCurrentDraw[wi+4] * 2 + 127) & 0xff);
@@ -108,6 +136,12 @@ void loop() {
         sendBuffer.write(round(motorCurrentDraw[wi] * 2 + 127) & 0xff);
       }
       sendBuffer.write(flags);
+
+      // Get battery voltate from first drive motor controller, in tenths of a volt.
+      int batteryVoltage = driveMC[0].getBattery(1);
+      // 2 bytes to represent battery voltage in tenths of a volt.
+      sendBuffer.write((batteryVoltage >> 8) & 0xff);
+      sendBuffer.write((batteryVoltage >> 0) & 0xff);
 
       sendBuffer.send();
     }

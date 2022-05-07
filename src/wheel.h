@@ -1,4 +1,5 @@
 #include "../lib/QuadEncoder/QuadEncoder.h"
+#include "../lib/USBSabertooth/USBSabertooth.h"
 
 #include "./constants.h"
 #include "./util.h"
@@ -14,6 +15,10 @@ class Wheel {
     uint8_t steeringMotorDirectionPin;
     uint8_t steeringMotorPwmPin;
     uint8_t steeringMotorFaultPin;
+    /** Pointer to the drive motor controller. */
+    USBSabertooth *driveMotorController;
+    /** Channel on the drive motor controller this wheels drive motor is attached to. */
+    uint8_t driveMotorControllerChannel;
     /** Pointer to the quadrature encoder for this wheel. */
     QuadEncoder *encoder;
 
@@ -26,8 +31,8 @@ class Wheel {
     double position = 0;
     /** Target position of the wheel in degrees. */
     double targetPosition = 0;
-    /** Drive rate in the last step. */
-    double driveRate = 0;
+    /** Steering motor drive rate in the last step. */
+    double steeringDriveRate = 0;
     /** Time of previous step. */
     uint32_t previousStepTime = 0;
     /** Whether the motor controller (channel) is experiencing a fault. */
@@ -39,8 +44,8 @@ class Wheel {
     /** Drive the steering motor. Rate range is [-1, 1]. Negative values indicate counter-clockwise. */
     void driveMotor(double rate) {
       // Ensure change in drive speed this time step is no more than MOTOR_RAMPING_DELTA.
-      double rateDelta = capRange(-MOTOR_RAMPING_DELTA, rate - this->driveRate, MOTOR_RAMPING_DELTA);
-      double rampedRate = this->driveRate + rateDelta;
+      double rateDelta = capRange(-MOTOR_RAMPING_DELTA, rate - this->steeringDriveRate, MOTOR_RAMPING_DELTA);
+      double rampedRate = this->steeringDriveRate + rateDelta;
       
       // If the motor direction is changing, turn off PWM output before performing the direction change.
       // This avoids the situation where the A and B direction input on the motor controller are both potentially 
@@ -48,13 +53,15 @@ class Wheel {
       bool direction = rampedRate > 0 ? CW : CCW;
       digitalWrite(this->steeringMotorDirectionPin, direction);
       analogWrite(this->steeringMotorPwmPin, abs(round(rampedRate * 256)));
-      this->driveRate = rampedRate;
+      this->steeringDriveRate = rampedRate;
     }
 
   
   public:
     Wheel(
       int wheelNumber, 
+      USBSabertooth *driveMotorController,
+      uint8_t driveMotorControllerChannel,
       uint8_t steeringMotorDirectionPin,
       uint8_t steeringMotorPwmPin,
       uint8_t steeringMotorFaultPin,
@@ -62,6 +69,8 @@ class Wheel {
       QuadEncoder * encoder
     ):
       wheelNumber(wheelNumber),
+      driveMotorController(driveMotorController),
+      driveMotorControllerChannel(driveMotorControllerChannel),
       steeringMotorDirectionPin(steeringMotorDirectionPin),
       steeringMotorPwmPin(steeringMotorPwmPin),
       steeringMotorFaultPin(steeringMotorFaultPin),
@@ -92,11 +101,11 @@ class Wheel {
       // If this isn't the first iteration and the drive rate is "large enough",
       // determine the amount the wheel is expected to turn, and check whether the wheel turned
       // within some threshold factor of that.
-      if (this->previousStepTime > 0 && fabs(this->driveRate) > STUCK_CHECK_DRIVE_RATE_THRESHOLD) {
+      if (this->previousStepTime > 0 && fabs(this->steeringDriveRate) > STUCK_CHECK_DRIVE_RATE_THRESHOLD) {
         double actualMovement = normaliseValueToRange(-180, currentPosition - this->position, 180);
         uint32_t elapsedTimeMicroSec = now - this->previousStepTime; // Note: this handles wrap around of timestamp.
         double elapsedTimeSec = elapsedTimeMicroSec * 0.000001;
-        double expectedMovement = NOMINAL_MAX_DEGREES_PER_SECOND * elapsedTimeSec * this->driveRate;
+        double expectedMovement = NOMINAL_MAX_DEGREES_PER_SECOND * elapsedTimeSec * this->steeringDriveRate;
 
         // If the wheel has turned less, in the right direction, than 
         // STUCK_MOVEMENT_THRESHOLD proportion of the expected amount.
@@ -133,6 +142,16 @@ class Wheel {
       this->previousStepTime = now;
     }
 
+    /** Set drive rate, in range [-1, 1]. */
+    void setDriveRate(double rate) {
+      this->driveMotorController->motor(this->driveMotorControllerChannel, round(rate * 2047));
+    }
+
+    /** Get the current drive rate of the drive motor from the motor controller, in range [-1, 1]. */
+    double getDriveRate() { 
+      return this->driveMotorController->get('M', this->driveMotorControllerChannel) / 2047.0;
+    }
+
     /** Set target position of the wheel in degrees, in range [-180, 180]. */
     void setWheelPositionTarget(double newTargetPosition) {
       this->targetPosition = newTargetPosition;
@@ -150,8 +169,13 @@ class Wheel {
     bool getSteeringDriverFault() { return this->steeringMotorDriverFault; }
 
     /** Get the current drive rate of the steering motor, in range [-1, 1]. */
-    double getDriveRate() { return this->driveRate; }
+    double getSteeringMotorDriveRate() { return this->steeringDriveRate; }
 
     /** Get the amount of time that the wheel has been stuck, in seconds. */
     double getStuckTime() { return this->stuckTime; }
+
+    /** Returns the temperature of the drive motor controller channel for this wheel in degrees C. */
+    int getDriveControllerTemperature() {
+      return this->driveMotorController->getTemperature(this->driveMotorControllerChannel);
+    }
 };
