@@ -4,3 +4,8 @@
 .vscode/launch.json
 .vscode/ipch
 lib/**/examples
+gerbers*
+pcb/digikey-kicad-library-master
+pcb/teensy_library-master
+pcb/teensy.pretty
+pcb/downlow/*-bak

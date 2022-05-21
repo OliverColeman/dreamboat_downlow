@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name images)(type KiCad)(uri /home/data/dreamboat/drawings/pcb/images.pretty)(options "")(descr ""))
+)
