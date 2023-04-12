@@ -19,7 +19,7 @@ double getRampedRateForMotorDrive(double currentRate, double targetRate, double 
     double maxRate = currentRate * (maxCurrent / abs(motorCurrent));
     rate = capRange(-maxRate, rate, maxRate);
   }
-  return rate;
+  return rate * MOTOR_THROTTLING_FACTOR;
 }
 
 
@@ -155,7 +155,7 @@ class Wheel {
       // If the absolute position is not known, drive the wheel clockwise until we find the home position.
       if (!this->ready) {
         // Start/continue driving the wheel to the home position, as determined by the home switch.
-        this->updateSteeringMotor(1, steeringMotorCurrent);
+        this->updateSteeringMotor(0.333, steeringMotorCurrent);
         if (this->atHomePosition) { 
           this->ready = true;
         }

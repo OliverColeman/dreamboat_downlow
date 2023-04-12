@@ -10,6 +10,8 @@
  * PlatformIO is used for development.
  */
 
+// #define DEBUG=1
+
 #include "../lib/ADC/ADC.h"
 
 #include "wheel.h"
@@ -170,6 +172,10 @@ void loop() {
 
   // Update wheel and motor current draw info every WHEEL_UPDATE_PERIOD us.
   now = micros();
+  #ifdef DEBUG
+  uint32_t diff = (uint32_t)(now - lastWheelUpdateTime);
+  #endif
+  
   if ((uint32_t)(now - lastWheelUpdateTime) > WHEEL_UPDATE_PERIOD) {
     lastWheelUpdateTime = now;
 
@@ -183,25 +189,33 @@ void loop() {
     }
 
     #ifdef DEBUG
-    now = micros();
-    if ((uint32_t)(now - lastDebugOutputTime) > 1 * 1000000) {
-      lastDebugOutputTime = now;
-      for (int wi = 0; wi < 4; wi++) {
-        Serial.print(wheels[wi].getSteeringDriverFault() ? "f" : "");
-        Serial.print(wheels[wi].isReady() ? "r" : "h");
-        Serial.print(" P:");
-        Serial.print(wheels[wi].getPosition());
-        Serial.print(" D:");
-        Serial.print(round(wheels[wi].getDriveRate() * 127 + 127) & 0xff);
-        Serial.print(" S:");
-        Serial.print(wheels[wi].getStuckTime());
-        Serial.print("    ");
-      }
-      Serial.println();
-    }
-    
+    // now = micros();
+    // if ((uint32_t)(now - lastDebugOutputTime) > 1 * 1000000) {
+    //   lastDebugOutputTime = now;
+    //   for (int wi = 0; wi < 4; wi++) {
+    //     Serial.print(wheels[wi].getSteeringDriverFault() ? "f" : "");
+    //     Serial.print(wheels[wi].isReady() ? "r" : "h");
+    //     Serial.print(" P:");
+    //     Serial.print(wheels[wi].getPosition());
+    //     Serial.print(" D:");
+    //     Serial.print(round(wheels[wi].getDriveRate() * 127 + 127) & 0xff);
+    //     Serial.print(" S:");
+    //     Serial.print(wheels[wi].getStuckTime());
+    //     Serial.print("    ");
+    //   }
+    //   Serial.println();
+    // }
     #endif
   }
+
+  #ifdef DEBUG
+  now = micros();
+  if ((uint32_t)(now - lastDebugOutputTime) > 0.5 * 1000000) {
+    lastDebugOutputTime = now;
+    Serial.print("diff: ");
+    Serial.println(diff);
+  }
+  #endif
 
   now = micros();
   uint32_t ledBlinkPeriod = setCommandReceivedTimeout ? STATUS_ERROR_BLINK_PERIOD : STATUS_OKAY_BLINK_PERIOD;

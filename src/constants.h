@@ -1,11 +1,11 @@
-const int STEERING_PINION_TEETH = 9;
-const int STEERING_SPROCKET_TEETH = 60;
-const int ENCODER_PPR = 400; // PPR describes the number of high pulses the encoder has on either of its outputs per revolution.
+const double STEERING_SPROCKET_TEETH = 60; // Use doubles to save conversion to double below.
+const double ENCODER_SPROCKET_TEETH = 26;
+const double ENCODER_PPR = 400; // PPR describes the number of high pulses the encoder has on either of its outputs per revolution.
 // The encoder library (in|de)crements the count for every change on either of the encoder outputs, 
 // so the count given by the encoder library will be double the PPR for every revolution of the encoder.
 // The encoder is attached to the motor output, so factor in the gearing ratio of that to the actual wheel.
-const int ENCODER_TICKS_PER_WHEEL_REVOLUTION = 2 * ENCODER_PPR * ((double) STEERING_SPROCKET_TEETH / (double) STEERING_PINION_TEETH); 
-const int ENCODER_TICKS_PER_DEGREE = ENCODER_TICKS_PER_WHEEL_REVOLUTION / 360;
+const double ENCODER_TICKS_PER_WHEEL_REVOLUTION = 4 * ENCODER_PPR * STEERING_SPROCKET_TEETH / ENCODER_SPROCKET_TEETH;
+const double ENCODER_TICKS_PER_DEGREE = ENCODER_TICKS_PER_WHEEL_REVOLUTION / 360.0;
 
 enum Direction {
   /** Clockwise */
@@ -14,7 +14,7 @@ enum Direction {
   CCW = HIGH
 };
 
-const double STEERING_PID_K = 0.5;
+const double STEERING_PID_K = 0.05;
 
 const int STEERING_PWM_FREQUENCY = 20000;
 
@@ -35,14 +35,16 @@ const double STUCK_MOVEMENT_THRESHOLD = 0.3;
 const double STUCK_CHECK_DRIVE_RATE_THRESHOLD = 0.1;
 
 /** Frequency of wheel updates in Hz. */
-const int WHEEL_UPDATE_FREQ = 10;
+const int WHEEL_UPDATE_FREQ = 50;
 /** Period of wheel updates, in us. */
 const uint32_t WHEEL_UPDATE_PERIOD = 1000000 / WHEEL_UPDATE_FREQ;
 
 /** Time it takes in seconds to go from full stop to full speed for the drive and steering motors. */
-const double MOTOR_RAMPING_TIME = 1;
+const double MOTOR_RAMPING_TIME = 0.2;
 /** The maximum percentile change in motor drive rate per update step. */
 const double MOTOR_RAMPING_DELTA = 1.0 / (MOTOR_RAMPING_TIME * WHEEL_UPDATE_FREQ);
+/** Throttle (multiply) final motor drive rates by this amount. 1 means no throttling. */
+const double MOTOR_THROTTLING_FACTOR = 1;
 
 /** The maximum current draw allowed for drive motors, in amps. */
 const double DRIVE_MOTOR_MAX_CURRENT = 28;
