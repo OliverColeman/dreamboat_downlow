@@ -40,7 +40,9 @@ class Wheel {
     /** Pointer to the quadrature encoder for this wheel. */
     QuadEncoder *encoder;
 
-    /** Indicates if this wheel is ready - it's ready when it's reset itself to the home and so knows it's position. */
+    bool isReversed = this->wheelNumber > 1;
+
+    /** Indicates if this wheel is ready - it's ready when it's reset itself to the home and so knows its position. */
     bool ready = false;
     /** True iff the last update found the wheel at the home position as indicated by the home switch. */
     bool atHomePosition = false;
@@ -61,9 +63,16 @@ class Wheel {
     bool steeringMotorDriverFault = false;
     /** Amount of time that wheel appears to have become stuck for, in seconds. */
     double stuckTime = 0;
+    /** Whether a shutdown command is in effect. */
+    bool isShutdown = false;
 
     /** Update the drive motor, working towards target rate allowing for ramping. Rate range is [-1, 1]. */
     void updateDriveMotor(double motorCurrent) {
+      if (this->isShutdown) {
+        // Clear previous shutdown command.
+        this->driveMotorController->shutDown('M', this->driveMotorControllerChannel, false);
+        this->isShutdown = false;
+      }
       double rampedRate = getRampedRateForMotorDrive(
         this->driveRate, this->targetDriveRate, motorCurrent, DRIVE_MOTOR_MAX_CURRENT
       );
@@ -80,6 +89,17 @@ class Wheel {
       digitalWrite(this->steeringMotorDirectionPin, direction);
       analogWrite(this->steeringMotorPwmPin, abs(round(rampedRate * 256)));
       this->steeringDriveRate = rampedRate;
+    }
+
+    /** Puts drive motor in brake mode and sets steering motor rate to 0. */
+    void stopAll() {
+      if (!this->isShutdown) {
+        this->driveMotorController->shutDown('M', this->driveMotorControllerChannel, true);
+        this->driveRate = 0;
+        analogWrite(this->steeringMotorPwmPin, 0);
+        this->steeringDriveRate = 0;
+        this->isShutdown = true;
+      }
     }
 
   
@@ -112,65 +132,70 @@ class Wheel {
       this->encoder->init();  // Initialise the encoder for the channel selected
     }
 
-    void update(double driveMotorCurrent, double steeringMotorCurrent) {
-      uint32_t now = micros();
+    void update(bool disable, double driveMotorCurrent, double steeringMotorCurrent) {
+      if (disable) {
+        this->stopAll();
+      }
+      else {
+        uint32_t now = micros();
 
-      this->updateDriveMotor(driveMotorCurrent);
-      
-      this->steeringMotorDriverFault = digitalRead(this->steeringMotorFaultPin) == LOW;
+        this->updateDriveMotor(driveMotorCurrent);
+        
+        this->steeringMotorDriverFault = digitalRead(this->steeringMotorFaultPin) == LOW;
 
-      this->atHomePosition = digitalRead(this->homeSwitchPin) == LOW;
-      // Reset encoder position to 0 when home position found.
-      if (this->atHomePosition) this->encoder->write(0);
+        this->atHomePosition = digitalRead(this->homeSwitchPin) == LOW;
+        // Reset encoder position to 180 or 0, depending on if reversed, when home position encountered.
+        if (this->atHomePosition) this->encoder->write(round((this->isReversed ? -180 : 0) * ENCODER_TICKS_PER_DEGREE));
 
-      double currentPosition = (double) this->encoder->read() / ENCODER_TICKS_PER_DEGREE;
-      currentPosition = normaliseValueToRange(-180, currentPosition, 180);
+        double currentPosition = (double) this->encoder->read() / ENCODER_TICKS_PER_DEGREE;
+        currentPosition = normaliseValueToRange(-180, currentPosition, 180);
 
-      // If this isn't the first iteration and the drive rate is "large enough",
-      // determine the amount the wheel is expected to turn, and check whether the wheel turned
-      // within some threshold factor of that.
-      if (this->previousStepTime > 0 && fabs(this->steeringDriveRate) > STUCK_CHECK_DRIVE_RATE_THRESHOLD) {
-        double actualMovement = normaliseValueToRange(-180, currentPosition - this->position, 180);
-        uint32_t elapsedTimeMicroSec = now - this->previousStepTime; // Note: this handles wrap around of timestamp.
-        double elapsedTimeSec = elapsedTimeMicroSec * 0.000001;
-        double expectedMovement = NOMINAL_MAX_DEGREES_PER_SECOND * elapsedTimeSec * this->steeringDriveRate;
+        // If this isn't the first iteration and the drive rate is "large enough",
+        // determine the amount the wheel is expected to turn, and check whether the wheel turned
+        // within some threshold factor of that.
+        if (this->previousStepTime > 0 && fabs(this->steeringDriveRate) > STUCK_CHECK_DRIVE_RATE_THRESHOLD) {
+          double actualMovement = normaliseValueToRange(-180, currentPosition - this->position, 180);
+          uint32_t elapsedTimeMicroSec = now - this->previousStepTime; // Note: this handles wrap around of timestamp.
+          double elapsedTimeSec = elapsedTimeMicroSec * 0.000001;
+          double expectedMovement = NOMINAL_MAX_DEGREES_PER_SECOND * elapsedTimeSec * this->steeringDriveRate;
 
-        // If the wheel has turned less, in the right direction, than 
-        // STUCK_MOVEMENT_THRESHOLD proportion of the expected amount.
-        // Note: important to keep the sign of the expected and actual movement, 
-        // to handle the case that the wheel turns the opposite direction.
-        if (actualMovement / expectedMovement < STUCK_MOVEMENT_THRESHOLD) {
-          this->stuckTime += elapsedTimeSec;
+          // If the wheel has turned less, in the right direction, than 
+          // STUCK_MOVEMENT_THRESHOLD proportion of the expected amount.
+          // Note: important to keep the sign of the expected and actual movement, 
+          // to handle the case that the wheel turns the opposite direction.
+          if (actualMovement / expectedMovement < STUCK_MOVEMENT_THRESHOLD) {
+            this->stuckTime += elapsedTimeSec;
+          }
+          else {
+            this->stuckTime = 0;
+          }
         }
         else {
           this->stuckTime = 0;
         }
-      }
-      else {
-        this->stuckTime = 0;
-      }
 
-      this->position = currentPosition;
+        this->position = currentPosition;
 
-      // If the absolute position is not known, drive the wheel clockwise until we find the home position.
-      if (!this->ready) {
-        // Start/continue driving the wheel to the home position, as determined by the home switch.
-        this->updateSteeringMotor(0.333, steeringMotorCurrent);
-        if (this->atHomePosition) { 
-          this->ready = true;
+        // If the absolute position is not known, drive the wheel clockwise until we find the home position.
+        if (!this->ready) {
+          // Start/continue driving the wheel to the home position, as determined by the home switch.
+          this->updateSteeringMotor(0.5, steeringMotorCurrent);
+          if (this->atHomePosition) { 
+            this->ready = true;
+          }
         }
-      }
-      else {
-        double error = this->targetPosition - this->position;
-        // Allow wrapping around, eg going directly from current position of -180.0 to target position of 180.1
-        error = normaliseValueToRange(-180, error, 180);
-        // Output is proportional to the error, but only within a few degrees of error,
-        // otherwise it's capped to the maximum drive rate.
-        double output = capRange(-1, error * STEERING_PID_K, 1);
-        this->updateSteeringMotor(output, steeringMotorCurrent);
-      }
+        else {
+          double error = this->targetPosition - this->position;
+          // Allow wrapping around, eg going directly from current position of -180.0 to target position of 180.1
+          error = normaliseValueToRange(-180, error, 180);
+          // Output is proportional to the error, but only within a few degrees of error,
+          // otherwise it's capped to the maximum drive rate.
+          double output = capRange(-1, error * STEERING_PID_K, 1);
+          this->updateSteeringMotor(output, steeringMotorCurrent);
+        }
 
-      this->previousStepTime = now;
+        this->previousStepTime = now;
+      }
     }
 
     /** Set (target) drive rate, in range [-1, 1]. */

@@ -10,11 +10,12 @@
  * PlatformIO is used for development.
  */
 
-// #define DEBUG=1
+// #define DEBUG 1
 
 #include "../lib/ADC/ADC.h"
-
 #include "wheel.h"
+
+#define EMERGENCY_STOP_PIN 32
 
 // Set up the quadrature encoders for steering position.
 // QuadEncoder( channel [1:4], A pin, B pin )
@@ -53,9 +54,11 @@ double motorCurrentDraw[8];
 // Make an ADC to read the current sensor values.
 ADC *adc = new ADC();
 
-
 void setup() {
+  pinMode(EMERGENCY_STOP_PIN, INPUT_PULLDOWN);
+
   for (int mci = 0; mci < 2; mci++) {
+    driveMC[mci].setTimeout(2 * WHEEL_UPDATE_PERIOD / 1000);
     driveMC[mci].setGetTimeout(50);
     driveMC[mci].setGetRetryInterval(20);
     driveMC[mci].setRamping(-16383);
@@ -94,6 +97,8 @@ Buffer sendBuffer = Buffer(32);
 boolean ledState = false;
 
 void loop() {
+  bool emergencyStopTriggered = digitalRead(EMERGENCY_STOP_PIN) == LOW;
+
   #ifndef DEBUG
 
   // If a command has been received over USB.
@@ -119,11 +124,11 @@ void loop() {
     // If a Get command has been received.
     else if (command == 'G') {
       // 1 byte for wheel fault (of steering motor driver) and ready status flags, bit format [ w3f w2f w1f w0f w3r w2r w1r w0r ]
-      byte flags = 0;
+      byte wheelStatusFlags = 0;
       // For each wheel.
       for (int wi = 0; wi < 4; wi++) {
-        flags |= wheels[wi].getSteeringDriverFault() << (wi+4);
-        flags |= wheels[wi].isReady() << wi;
+        wheelStatusFlags |= wheels[wi].getSteeringDriverFault() << (wi+4);
+        wheelStatusFlags |= wheels[wi].isReady() << wi;
 
         // 2 bytes to represent current angle of wheel, in range [0-65535].
         double normalisedTo360 = normaliseValueToRange(0, wheels[wi].getPosition(), 360);
@@ -149,7 +154,10 @@ void loop() {
         // 1 byte to represent the current being drawn by the drive motor, in halves of an amp. 0 = -63.5A, 127=0A, 254=63.5A
         sendBuffer.write(round(motorCurrentDraw[wi] * 2 + 127) & 0xff);
       }
-      sendBuffer.write(flags);
+      sendBuffer.write(wheelStatusFlags);
+
+      byte statusFlags = emergencyStopTriggered;
+      sendBuffer.write(statusFlags);
 
       // Get battery voltage from first drive motor controller, in tenths of a volt.
       int batteryVoltage = driveMC[0].getBattery(1);
@@ -160,20 +168,19 @@ void loop() {
       sendBuffer.send();
     }
   }
+
   #endif
 
+  /** Indicates that a set command has not been received for a while. 
+   * In which case something has gone wrong and all motors should be stopped. */
   bool setCommandReceivedTimeout = (uint32_t)(micros() - lastSetCommandReceivedTime) > SET_COMMAND_RECEIVED_TIMEOUT;
-  // If set command has not been received for too long then stop.
-  if (setCommandReceivedTimeout) {
-    for (int wi = 0; wi < 4; wi++) {
-      wheels[wi].setDriveRate(0);
-    }
-  }
+
+  bool disable = setCommandReceivedTimeout | emergencyStopTriggered;
 
   // Update wheel and motor current draw info every WHEEL_UPDATE_PERIOD us.
   now = micros();
   #ifdef DEBUG
-  uint32_t diff = (uint32_t)(now - lastWheelUpdateTime);
+  // uint32_t diff = (uint32_t)(now - lastWheelUpdateTime);
   #endif
   
   if ((uint32_t)(now - lastWheelUpdateTime) > WHEEL_UPDATE_PERIOD) {
@@ -185,7 +192,7 @@ void loop() {
     }
 
     for (int wi = 0; wi < 4; wi++) {
-      wheels[wi].update(motorCurrentDraw[wi], motorCurrentDraw[wi+4]);
+      wheels[wi].update(disable, motorCurrentDraw[wi], motorCurrentDraw[wi+4]);
     }
 
     #ifdef DEBUG
@@ -212,8 +219,9 @@ void loop() {
   now = micros();
   if ((uint32_t)(now - lastDebugOutputTime) > 0.5 * 1000000) {
     lastDebugOutputTime = now;
-    Serial.print("diff: ");
-    Serial.println(diff);
+    // Serial.print("diff: ");
+    // Serial.println(diff);
+    Serial.println(emergencyStopTriggered);
   }
   #endif
 
