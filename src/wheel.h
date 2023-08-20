@@ -40,7 +40,11 @@ class Wheel {
     /** Pointer to the quadrature encoder for this wheel. */
     QuadEncoder *encoder;
 
-    bool isReversed = this->wheelNumber > 1;
+    /** Indicates if the wheel home position is reversed (180 deg.), for the rear wheels. */
+    bool homePositionReversed = this->wheelNumber > 1;
+
+    /** Indicates that the wheel drive direction is reversed (oops). */
+    bool driveReversed = this->wheelNumber == 1;
 
     /** Indicates if this wheel is ready - it's ready when it's reset itself to the home and so knows its position. */
     bool ready = false;
@@ -76,7 +80,10 @@ class Wheel {
       double rampedRate = getRampedRateForMotorDrive(
         this->driveRate, this->targetDriveRate, motorCurrent, DRIVE_MOTOR_MAX_CURRENT
       );
-      this->driveMotorController->motor(this->driveMotorControllerChannel, round(rampedRate * 2047));
+      this->driveMotorController->motor(
+        this->driveMotorControllerChannel,
+        round(rampedRate * 2047) * (this->driveReversed ? -1 : 1)
+      );
       this->driveRate = rampedRate;
     }
 
@@ -145,7 +152,7 @@ class Wheel {
 
         this->atHomePosition = digitalRead(this->homeSwitchPin) == LOW;
         // Reset encoder position to 180 or 0, depending on if reversed, when home position encountered.
-        if (this->atHomePosition) this->encoder->write(round((this->isReversed ? -180 : 0) * ENCODER_TICKS_PER_DEGREE));
+        if (this->atHomePosition) this->encoder->write(round((this->homePositionReversed ? -180 : 0) * ENCODER_TICKS_PER_DEGREE));
 
         double currentPosition = (double) this->encoder->read() / ENCODER_TICKS_PER_DEGREE;
         currentPosition = normaliseValueToRange(-180, currentPosition, 180);
@@ -179,7 +186,7 @@ class Wheel {
         // If the absolute position is not known, drive the wheel clockwise until we find the home position.
         if (!this->ready) {
           // Start/continue driving the wheel to the home position, as determined by the home switch.
-          this->updateSteeringMotor(0.5, steeringMotorCurrent);
+          this->updateSteeringMotor(0.25, steeringMotorCurrent);
           if (this->atHomePosition) { 
             this->ready = true;
           }
