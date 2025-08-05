@@ -14,7 +14,7 @@ enum Direction {
   CCW = HIGH
 };
 
-const double STEERING_PID_K = 0.05;
+const double STEERING_PID_K = 0.03;
 
 const int STEERING_PWM_FREQUENCY = 20000;
 
@@ -40,16 +40,24 @@ const int WHEEL_UPDATE_FREQ = 50;
 const uint32_t WHEEL_UPDATE_PERIOD = 1000000 / WHEEL_UPDATE_FREQ;
 
 /** Time it takes in seconds to go from full stop to full speed for the drive and steering motors. */
-const double MOTOR_RAMPING_TIME = 0.2;
+const double DRIVE_MOTOR_RAMPING_TIME = 0.5;
 /** The maximum percentile change in motor drive rate per update step. */
-const double MOTOR_RAMPING_DELTA = 1.0 / (MOTOR_RAMPING_TIME * WHEEL_UPDATE_FREQ);
+const double DRIVE_MOTOR_RAMPING_DELTA = 1.0 / (DRIVE_MOTOR_RAMPING_TIME * WHEEL_UPDATE_FREQ);
+/** Time it takes in seconds to go from full stop to full speed for the drive and steering motors. */
+const double STEERING_MOTOR_RAMPING_TIME = 0.2;
+/** The maximum percentile change in motor drive rate per update step. */
+const double STEERING_MOTOR_RAMPING_DELTA = 1.0 / (STEERING_MOTOR_RAMPING_TIME * WHEEL_UPDATE_FREQ);
+
 /** Throttle (multiply) final motor drive rates by this amount. 1 means no throttling. */
 const double MOTOR_THROTTLING_FACTOR = 1;
 
 /** The maximum current draw allowed for drive motors, in amps. */
-const double DRIVE_MOTOR_MAX_CURRENT = 28;
-/** The maximum current draw allowed for drive motors, in amps. */
-const double STEERING_MOTOR_MAX_CURRENT = 18;
+const double DRIVE_MOTOR_MAX_CURRENT = 9999;
+/** The maximum current draw allowed for steering motors, in amps. */
+const double STEERING_MOTOR_MAX_CURRENT = 9999;
+
+/** Proportion of maximum steering rate when finding the home position. */
+const double STEERING_HOMING_DRIVE_RATE = 0.15;
 
 #define DRIVE_MOTOR_SERIAL0 Serial7
 #define DRIVE_MOTOR_SERIAL1 Serial3

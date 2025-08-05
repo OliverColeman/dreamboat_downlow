@@ -137,22 +137,22 @@ void loop() {
         sendBuffer.write((shortVal >> 0) & 0xff);
 
         // 1 byte to represent rate the drive motor is being driven at. 0=full reverse, 127=stopped, 254=full forward.
-        sendBuffer.write(round(wheels[wi].getDriveRate() * 127 + 127) & 0xff);
+        sendBuffer.write(int(round(wheels[wi].getDriveRate() * 127 + 127)) & 0xff);
         
         // 1 byte to represent rate the steering motor is being driven at. 0=full reverse, 127=stopped, 254=full forward.
-        sendBuffer.write(round(wheels[wi].getSteeringMotorDriveRate() * 127 + 127) & 0xff);
+        sendBuffer.write(int(round(wheels[wi].getSteeringMotorDriveRate() * 127 + 127)) & 0xff);
 
         // 1 byte to represent time wheel has been stuck, in tenths of a second. 
-        sendBuffer.write(round((wheels[wi].getStuckTime() * 10)) & 0xff);
+        sendBuffer.write(int(round((wheels[wi].getStuckTime() * 10))) & 0xff);
 
         // // 1 byte to represent temperature of the drive motor controller channel for the wheel, in degrees C. 
         // sendBuffer.write(round((wheels[wi].getDriveControllerTemperature())) & 0xff);
 
         // 1 byte to represent the current being drawn by the steering motor, in halves of an amp. 0 = -63.5A, 127=0A, 254=63.5A
-        sendBuffer.write(round(motorCurrentDraw[wi+4] * 2 + 127) & 0xff);
+        sendBuffer.write(int(round(motorCurrentDraw[wi+4] * 2 + 127)) & 0xff);
 
         // 1 byte to represent the current being drawn by the drive motor, in halves of an amp. 0 = -63.5A, 127=0A, 254=63.5A
-        sendBuffer.write(round(motorCurrentDraw[wi] * 2 + 127) & 0xff);
+        sendBuffer.write(int(round(motorCurrentDraw[wi] * 2 + 127)) & 0xff);
       }
       sendBuffer.write(wheelStatusFlags);
 

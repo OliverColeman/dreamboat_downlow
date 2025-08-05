@@ -10,9 +10,9 @@
  * - change in motor drive rate for a time step is no more than MOTOR_RAMPING_DELTA, and
  * - the drive rate is capped to maintain current draw less than the maximum allowed. 
  */
-double getRampedRateForMotorDrive(double currentRate, double targetRate, double motorCurrent, double maxCurrent) {
+double getRampedRateForMotorDrive(double currentRate, double targetRate, double motorCurrent, double maxCurrent, double motorRampDelta) {
   // Determine change in rate while allowing for ramping.
-  double rateDelta = capRange(-MOTOR_RAMPING_DELTA, targetRate - currentRate, MOTOR_RAMPING_DELTA);
+  double rateDelta = capRange(-motorRampDelta, targetRate - currentRate, motorRampDelta);
   double rate = currentRate + rateDelta;
   // Determine maximum drive rate while allowing for current limiting.
   if (abs(motorCurrent) > maxCurrent) { 
@@ -41,10 +41,10 @@ class Wheel {
     QuadEncoder *encoder;
 
     /** Indicates if the wheel home position is reversed (180 deg.), for the rear wheels. */
-    bool homePositionReversed = this->wheelNumber > 1;
+    bool homePositionReversed = false; //this->wheelNumber > 1;
 
-    /** Indicates that the wheel drive direction is reversed (oops). */
-    bool driveReversed = this->wheelNumber == 1;
+    /** Indicates that the wheel drive direction is wired reversed (oops). */
+    bool driveReversed = this->wheelNumber > 0; // == 1;
 
     /** Indicates if this wheel is ready - it's ready when it's reset itself to the home and so knows its position. */
     bool ready = false;
@@ -78,11 +78,11 @@ class Wheel {
         this->isShutdown = false;
       }
       double rampedRate = getRampedRateForMotorDrive(
-        this->driveRate, this->targetDriveRate, motorCurrent, DRIVE_MOTOR_MAX_CURRENT
+        this->driveRate, this->targetDriveRate, motorCurrent, DRIVE_MOTOR_MAX_CURRENT, DRIVE_MOTOR_RAMPING_DELTA
       );
       this->driveMotorController->motor(
         this->driveMotorControllerChannel,
-        round(rampedRate * 2047) * (this->driveReversed ? -1 : 1)
+        int(round(rampedRate * 2047) * (this->driveReversed ? -1 : 1))
       );
       this->driveRate = rampedRate;
     }
@@ -90,11 +90,11 @@ class Wheel {
     /** Update the steering motor. Rate range is [-1, 1]. Negative values indicate counter-clockwise. */
     void updateSteeringMotor(double rate, double motorCurrent) {
       double rampedRate = getRampedRateForMotorDrive(
-        this->steeringDriveRate, rate, motorCurrent, STEERING_MOTOR_MAX_CURRENT
+        this->steeringDriveRate, rate, motorCurrent, STEERING_MOTOR_MAX_CURRENT, STEERING_MOTOR_RAMPING_DELTA
       );
       bool direction = rampedRate > 0 ? CW : CCW;
       digitalWrite(this->steeringMotorDirectionPin, direction);
-      analogWrite(this->steeringMotorPwmPin, abs(round(rampedRate * 256)));
+      analogWrite(this->steeringMotorPwmPin, abs(int(round(rampedRate * 256))));
       this->steeringDriveRate = rampedRate;
     }
 
@@ -152,7 +152,7 @@ class Wheel {
 
         this->atHomePosition = digitalRead(this->homeSwitchPin) == LOW;
         // Reset encoder position to 180 or 0, depending on if reversed, when home position encountered.
-        if (this->atHomePosition) this->encoder->write(round((this->homePositionReversed ? -180 : 0) * ENCODER_TICKS_PER_DEGREE));
+        if (this->atHomePosition) this->encoder->write(int(round((this->homePositionReversed ? -180 : 0) * ENCODER_TICKS_PER_DEGREE)));
 
         double currentPosition = (double) this->encoder->read() / ENCODER_TICKS_PER_DEGREE;
         currentPosition = normaliseValueToRange(-180, currentPosition, 180);
@@ -186,7 +186,7 @@ class Wheel {
         // If the absolute position is not known, drive the wheel clockwise until we find the home position.
         if (!this->ready) {
           // Start/continue driving the wheel to the home position, as determined by the home switch.
-          this->updateSteeringMotor(0.25, steeringMotorCurrent);
+          this->updateSteeringMotor(STEERING_HOMING_DRIVE_RATE, steeringMotorCurrent);
           if (this->atHomePosition) { 
             this->ready = true;
           }
