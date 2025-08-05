@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "downlow-rescue")(type "KiCad")(uri "${KIPRJMOD}/downlow-rescue.kicad_sym")(options "")(descr ""))
+)
